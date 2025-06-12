@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Duc</title><description>Blog</description><link>https://fuwari.vercel.app/</link><language>vi</language><item><title>Cách Remote Debug Golang</title><link>https://fuwari.vercel.app/posts/duc193/</link><guid isPermaLink="true">https://fuwari.vercel.app/posts/duc193/</guid><pubDate>Thu, 12 Jun 2025 00:00:00 GMT</pubDate><content:encoded>&lt;h1&gt;Cách remote debug Golang (Docker + Vscode) :&lt;/h1&gt;
+&lt;p&gt;Demo remote debug Golang trong folder có dạng như thế này :
+&lt;img src=&quot;https://hackmd.io/_uploads/SkXEQ8umgg.png&quot; alt=&quot;image&quot; /&gt;
+Chúng ta đang ở folder &lt;code&gt;C2&lt;/code&gt;.
+Và file &lt;code&gt;Dockerfile&lt;/code&gt; như thế này :
+&lt;img src=&quot;https://hackmd.io/_uploads/Skrsm8dmle.png&quot; alt=&quot;image&quot; /&gt;
+file &lt;code&gt;compose.yaml&lt;/code&gt; (tương tự &lt;code&gt;docker-compose.yml&lt;/code&gt;):
+&lt;img src=&quot;https://hackmd.io/_uploads/BJ8eEIuQlx.png&quot; alt=&quot;image&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;Vậy để config Remote Debug cho golang chúng ta cần vào &lt;code&gt;debug&lt;/code&gt; và click &lt;code&gt;create a launch.json file&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;https://hackmd.io/_uploads/H1l8VIOmlg.png&quot; alt=&quot;image&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;Ở đây chọn &lt;code&gt;Go&lt;/code&gt;
+&lt;img src=&quot;https://hackmd.io/_uploads/BJuONU_Xex.png&quot; alt=&quot;image&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;Chọn &lt;code&gt;launch Package&lt;/code&gt;
+&lt;img src=&quot;https://hackmd.io/_uploads/HkDcNI_7ll.png&quot; alt=&quot;image&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;Sau đó sửa file &lt;code&gt;.vscode/launch.json&lt;/code&gt; thành :&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;{
+  &quot;version&quot;: &quot;0.2.0&quot;,
+  &quot;configurations&quot;: [
+    {
+      &quot;name&quot;: &quot;Remote Debug Go (Docker)&quot;,
+      &quot;type&quot;: &quot;go&quot;,
+      &quot;request&quot;: &quot;attach&quot;,
+      &quot;mode&quot;: &quot;remote&quot;,
+      &quot;remotePath&quot;: &quot;/app&quot;, //Sửa thành path WORKDIR
+      &quot;port&quot;: 40000,     //port debug
+      &quot;host&quot;: &quot;localhost&quot;,
+      &quot;cwd&quot;: &quot;${workspaceFolder}/dist-c2&quot;, // Thay thành folder chỗ chứa src
+      &quot;apiVersion&quot;: 2
+    }
+  ]
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Sau đó ở &lt;code&gt;Dockerfile&lt;/code&gt; thêm như sau :&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;RUN go install github.com/go-delve/delve/cmd/dlv@latest&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;RUN go build -gcflags=&quot;all=-N -l&quot; -o app .&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;EXPOSE 40000&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;CMD [&quot;dlv&quot;, &quot;exec&quot;, &quot;./app&quot;, &quot;--headless&quot;, &quot;--listen=0.0.0.0:40000&quot;, &quot;--api-version=2&quot;, &quot;--accept-multiclient&quot;]&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Ví dụ :&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;FROM golang:1.24
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN GOOS=linux go build -o main .
+EXPOSE 8080
+CMD [&quot;./main&quot;]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Sau khi sửa thì nó sẽ thành như thế này :&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;FROM golang:1.24
+WORKDIR /app
+# Debug : Thêm đòng này 
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# Debug : Thêm/Sửa đòng này 
+RUN go build -gcflags=&quot;all=-N -l&quot; -o app .
+EXPOSE 8080
+EXPOSE 40000
+# Debug : Thêm/Sửa đòng này 
+CMD [&quot;dlv&quot;, &quot;exec&quot;, &quot;./app&quot;, &quot;--headless&quot;, &quot;--listen=0.0.0.0:40000&quot;, &quot;--api-version=2&quot;, &quot;--accept-multiclient&quot;]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Còn ở &lt;code&gt;docker-compose.yml&lt;/code&gt;  chỉ cần thêm port&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;services:
+  app:
+    build: .
+    ports:
+      - &quot;3336:8080&quot;
+      - &quot;40000:40000&quot; #Debug
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Sau đó build docker và debug thôi.
+&lt;img src=&quot;https://hackmd.io/_uploads/B1dkDUuQel.png&quot; alt=&quot;image&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;Vậy là đã đặt breakpoint được.
+&lt;img src=&quot;https://hackmd.io/_uploads/BJw8vLdmxg.png&quot; alt=&quot;image&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;Done.&lt;/p&gt;
+</content:encoded></item></channel></rss>
